@@ -15,22 +15,22 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <tf/tfMessage.h>
 
-inline void fillMessage( geometry_msgs::Pose& )
+inline void fillMessage( geometry_msgs::Pose & )
 {
   // static size, doesn't matter
 }
 
-inline void fillMessage( sensor_msgs::JointState& joint )
+inline void fillMessage( sensor_msgs::JointState &joint )
 {
   joint.header.frame_id = "base";
-  joint.name.push_back("Joint1");
-  joint.name.push_back("Joint2");
-  joint.name.push_back("Joint3");
-  joint.velocity.resize(3,0);
-  joint.effort.resize(3,0);
-  joint.position.push_back(0);
-  joint.position.push_back(1);
-  joint.position.push_back(2);
+  joint.name.push_back( "Joint1" );
+  joint.name.push_back( "Joint2" );
+  joint.name.push_back( "Joint3" );
+  joint.velocity.resize( 3, 0 );
+  joint.effort.resize( 3, 0 );
+  joint.position.push_back( 0 );
+  joint.position.push_back( 1 );
+  joint.position.push_back( 2 );
 }
 
 inline void fillMessage( sensor_msgs::PointCloud2 &pointcloud )
@@ -57,15 +57,15 @@ inline void fillMessage( sensor_msgs::Image &image )
   image.encoding = "rgb8";
 }
 
-inline void fillMessage( nav_msgs::Odometry& odom )
+inline void fillMessage( nav_msgs::Odometry &odom )
 {
-  odom.header.frame_id ="odom";
+  odom.header.frame_id = "odom";
   // I don't bother to fill the rest, because other fields have static size
 }
 
-inline void fillMessage( tf::tfMessage& msg )
+inline void fillMessage( tf::tfMessage &msg )
 {
-  msg.transforms.resize(3);
+  msg.transforms.resize( 3 );
 
   msg.transforms[0].header.frame_id = "this_one";
   msg.transforms[1].header.frame_id = "another_one";
@@ -74,10 +74,9 @@ inline void fillMessage( tf::tfMessage& msg )
 }
 
 
-
 namespace mt = ros::message_traits;
 
-template <typename MsgType> inline
+template<typename MsgType>
 void RTI_ParseMessageDefinition( benchmark::State &state )
 {
   const std::string &datatype = mt::DataType<MsgType>::value();
@@ -93,7 +92,21 @@ void RTI_ParseMessageDefinition( benchmark::State &state )
   }
 }
 
-template <typename MsgType> inline
+class NoLookupDescriptionProvider : public ros_babel_fish::DescriptionProvider
+{
+protected:
+  ros_babel_fish::MessageDescription::ConstPtr getMessageDescriptionImpl( const std::string &type ) override
+  {
+    return nullptr;
+  }
+
+  ros_babel_fish::ServiceDescription::ConstPtr getServiceDescriptionImpl( const std::string &type ) override
+  {
+    return nullptr;
+  }
+};
+
+template<typename MsgType>
 void RBF_ParseMessageDefinition( benchmark::State &state )
 {
   const std::string &datatype = mt::DataType<MsgType>::value();
@@ -105,14 +118,14 @@ void RBF_ParseMessageDefinition( benchmark::State &state )
   for ( auto _ : state )
   {
     state.PauseTiming();
-    ros_babel_fish::BabelFish fish;
+    NoLookupDescriptionProvider provider;
     state.ResumeTiming();
-    fish.descriptionProvider()->getMessageDescription( msg );
+    if ( provider.getMessageDescription( msg ) == nullptr ) exit( -1 );
   }
 }
 
 
-template <typename MsgType> inline
+template<typename MsgType>
 void RTI_ParseMessage( benchmark::State &state )
 {
   const std::string &datatype = mt::DataType<MsgType>::value();
@@ -124,7 +137,7 @@ void RTI_ParseMessage( benchmark::State &state )
   RosIntrospection::RenamedValues renamed_value;
 
   MsgType msg;
-  fillMessage(msg);
+  fillMessage( msg );
 
   ros::SerializedMessage serialized_msg = ros::serialization::serializeMessage( msg );
   RosIntrospection::ShapeShifter shape_shifter;
@@ -133,14 +146,14 @@ void RTI_ParseMessage( benchmark::State &state )
 
   for ( auto _ : state )
   {
-    auto buffer = absl::Span<uint8_t>( (uint8_t*)shape_shifter.raw_data(), shape_shifter.size() );
+    auto buffer = RosIntrospection::Span<uint8_t>((uint8_t *) shape_shifter.raw_data(), shape_shifter.size());
     parser.deserializeIntoFlatContainer( datatype, buffer, &flat_container, 10 );
     parser.applyNameTransform( datatype, flat_container, &renamed_value );
   }
 }
 
-template <typename MsgType> inline
-    static void RBF_ParseMessage( benchmark::State &state )
+template<typename MsgType>
+void RBF_ParseMessage( benchmark::State &state )
 {
   const std::string &datatype = mt::DataType<MsgType>::value();
   const std::string &definition = mt::Definition<MsgType>::value();
@@ -148,7 +161,7 @@ template <typename MsgType> inline
   ros_babel_fish::BabelFish fish;
 
   MsgType msg;
-  fillMessage(msg);
+  fillMessage( msg );
 
   ros::SerializedMessage serialized_msg = ros::serialization::serializeMessage( msg );
   ros_babel_fish::BabelFishMessage bf_msg;
@@ -164,106 +177,79 @@ template <typename MsgType> inline
 
 //------------------------------------------
 
-static void RTI_ParseMessageDefinitionPose( benchmark::State &state )
-{
-  RTI_ParseMessageDefinition<geometry_msgs::Pose>(state);
-}
-BENCHMARK( RTI_ParseMessageDefinitionPose )->Unit( benchmark::kMicrosecond );
+BENCHMARK_TEMPLATE( RTI_ParseMessageDefinition, geometry_msgs::Pose )->Unit( benchmark::kMicrosecond );
 
-static void RBF_ParseMessageDefinitionPose(benchmark::State &state)
-{
-  RBF_ParseMessageDefinition<geometry_msgs::Pose>(state);
-}
-BENCHMARK(RBF_ParseMessageDefinitionPose)->Unit(benchmark::kMicrosecond);
+BENCHMARK_TEMPLATE( RBF_ParseMessageDefinition, geometry_msgs::Pose )->Unit( benchmark::kMicrosecond );
 
 //------------------------------------------
 
-static void RTI_ParseMessagePose( benchmark::State &state )
-{
-  RTI_ParseMessage<geometry_msgs::Pose>(state);
-}
-BENCHMARK( RTI_ParseMessagePose );
+BENCHMARK_TEMPLATE( RTI_ParseMessageDefinition, sensor_msgs::JointState )->Unit( benchmark::kMicrosecond );
 
-static void RBF_ParseMessagePose( benchmark::State &state )
-{
-  RBF_ParseMessage<geometry_msgs::Pose>(state);
-}
-BENCHMARK( RBF_ParseMessagePose );
+BENCHMARK_TEMPLATE( RBF_ParseMessageDefinition, sensor_msgs::JointState )->Unit( benchmark::kMicrosecond );
 
 //------------------------------------------
 
-static void RTI_ParseMessageJointState( benchmark::State &state )
-{
-  RTI_ParseMessage<sensor_msgs::JointState>(state);
-}
-BENCHMARK( RTI_ParseMessageJointState );
+BENCHMARK_TEMPLATE( RTI_ParseMessageDefinition, nav_msgs::Odometry )->Unit( benchmark::kMicrosecond );
 
-
-static void RBF_ParseMessageJointState( benchmark::State &state )
-{
-  RBF_ParseMessage<sensor_msgs::JointState>(state);
-}
-BENCHMARK( RBF_ParseMessageJointState );
+BENCHMARK_TEMPLATE( RBF_ParseMessageDefinition, nav_msgs::Odometry )->Unit( benchmark::kMicrosecond );
 
 //------------------------------------------
 
-static void RTI_ParseMessageOdom( benchmark::State &state )
-{
-  RTI_ParseMessage<nav_msgs::Odometry>(state);
-}
-BENCHMARK( RTI_ParseMessageOdom );
+BENCHMARK_TEMPLATE( RTI_ParseMessageDefinition, tf::tfMessage )->Unit( benchmark::kMicrosecond );
 
-
-static void RBF_ParseMessageOdom( benchmark::State &state )
-{
-  RBF_ParseMessage<nav_msgs::Odometry>(state);
-}
-BENCHMARK( RBF_ParseMessageOdom );
+BENCHMARK_TEMPLATE( RBF_ParseMessageDefinition, tf::tfMessage )->Unit( benchmark::kMicrosecond );
 
 //------------------------------------------
 
-static void RTI_ParseMessageTF( benchmark::State &state )
-{
-  RTI_ParseMessage<tf::tfMessage>(state);
-}
-BENCHMARK( RTI_ParseMessageTF );
+BENCHMARK_TEMPLATE( RTI_ParseMessageDefinition, sensor_msgs::PointCloud2 )->Unit( benchmark::kMicrosecond );
 
-
-static void RBF_ParseMessageTF( benchmark::State &state )
-{
-  RBF_ParseMessage<tf::tfMessage>(state);
-}
-BENCHMARK( RBF_ParseMessageTF );
+BENCHMARK_TEMPLATE( RBF_ParseMessageDefinition, sensor_msgs::PointCloud2 )->Unit( benchmark::kMicrosecond );
 
 //------------------------------------------
 
-static void RTI_ParseMessagePointcloud( benchmark::State &state )
-{
-  RTI_ParseMessage<sensor_msgs::PointCloud2>(state);
-}
+BENCHMARK_TEMPLATE( RTI_ParseMessageDefinition, sensor_msgs::Image )->Unit( benchmark::kMicrosecond );
 
-BENCHMARK( RTI_ParseMessagePointcloud );
-
-static void RBF_ParseMessagePointcloud( benchmark::State &state )
-{
-  RBF_ParseMessage<sensor_msgs::PointCloud2>(state);
-}
-BENCHMARK( RBF_ParseMessagePointcloud );
+BENCHMARK_TEMPLATE( RBF_ParseMessageDefinition, sensor_msgs::Image )->Unit( benchmark::kMicrosecond );
 
 //------------------------------------------
 
-static void RTI_ParseMessageFullHDImage( benchmark::State &state )
-{
-  RTI_ParseMessage<sensor_msgs::Image>(state);
-}
-BENCHMARK( RTI_ParseMessageFullHDImage );
+BENCHMARK_TEMPLATE( RTI_ParseMessage, geometry_msgs::Pose );
+
+BENCHMARK_TEMPLATE( RBF_ParseMessage, geometry_msgs::Pose );
+
+//------------------------------------------
+
+BENCHMARK_TEMPLATE( RTI_ParseMessage, sensor_msgs::JointState );
 
 
-static void RBF_ParseMessageFullHDImage( benchmark::State &state )
-{
-  RBF_ParseMessage<sensor_msgs::Image>(state);
-}
-BENCHMARK( RBF_ParseMessageFullHDImage );
+BENCHMARK_TEMPLATE( RBF_ParseMessage, sensor_msgs::JointState );
+
+//------------------------------------------
+
+BENCHMARK_TEMPLATE( RTI_ParseMessage, nav_msgs::Odometry );
+
+
+BENCHMARK_TEMPLATE( RBF_ParseMessage, nav_msgs::Odometry );
+
+//------------------------------------------
+
+BENCHMARK_TEMPLATE( RTI_ParseMessage, tf::tfMessage );
+
+
+BENCHMARK_TEMPLATE( RBF_ParseMessage, tf::tfMessage );
+
+//------------------------------------------
+
+BENCHMARK_TEMPLATE( RTI_ParseMessage, sensor_msgs::PointCloud2 );
+
+BENCHMARK_TEMPLATE( RBF_ParseMessage, sensor_msgs::PointCloud2 );
+
+//------------------------------------------
+
+BENCHMARK_TEMPLATE( RTI_ParseMessage, sensor_msgs::Image );
+
+
+BENCHMARK_TEMPLATE( RBF_ParseMessage, sensor_msgs::Image );
 
 //------------------------------------------
 BENCHMARK_MAIN();
